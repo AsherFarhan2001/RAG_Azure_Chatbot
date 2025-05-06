@@ -21,7 +21,7 @@ async def func_asher_chatbot(req: func.HttpRequest) -> func.HttpResponse:
     The main entry point for the Azure Function.
     This function will proxy requests to the FastAPI app using ASGI.
     """
-    # Get the request path and method
+    
     route = req.route_params.get('route', '')
     if route:
         path = '/' + route
@@ -30,14 +30,9 @@ async def func_asher_chatbot(req: func.HttpRequest) -> func.HttpResponse:
     
     method = req.method
     logging.info(f"Received {method} request to {path}")
-    
-    # Log all available query parameters for debugging
     logging.info(f"Query parameters: {dict(req.params)}")
-    
-    # Log all available headers for debugging
     logging.info(f"Headers: {dict(req.headers)}")
-    
-    # Get query parameters
+
     params = {}
     for param_name, param_value in req.params.items():
         if param_name != 'code':  # Exclude Azure Functions authorization code

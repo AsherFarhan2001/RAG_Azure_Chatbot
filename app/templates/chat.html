@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Azure RAG Chat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#10a37f',      // ChatGPT green
+                        secondary: '#0d8a6f',    // Darker green
+                        dark: {
+                            900: '#202123',      // Sidebar background
+                            800: '#343541',      // Main background
+                            700: '#444654',      // Bot message background
+                            600: '#565869',      // Lighter accent
+                            500: '#acacbe',      // Muted text
+                        },
+                        userMsg: '#444654',      // User message background
+                        botMsg: '#343541',       // Bot message background 
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Animation for typing indicator */
+        @keyframes bounce {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-5px); }
+        }
+        .typing-dot:nth-child(1) { animation-delay: 0s; }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        .typing-dot {
+            animation: bounce 1.4s infinite ease-in-out;
+        }
+        
+        /* Ensure messages container is scrollable */
+        #messages-container {
+            overflow-y: auto !important;
+            scroll-behavior: smooth;
+            max-height: calc(100vh - 130px);
+            height: 100%;
+        }
+        
+        /* Hide scrollbar for Chrome, Safari and Opera */
+        #messages-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        /* Track */
+        #messages-container::-webkit-scrollbar-track {
+            background: #3a3a3a;
+            border-radius: 10px;
+        }
+        
+        /* Handle */
+        #messages-container::-webkit-scrollbar-thumb {
+            background: #565656;
+            border-radius: 10px;
+        }
+        
+        /* Handle on hover */
+        #messages-container::-webkit-scrollbar-thumb:hover {
+            background: #676767;
+        }
+    </style>
+</head>
+<body class="bg-dark-800 text-gray-200 h-screen overflow-hidden">
+    <div class="grid grid-cols-[280px_1fr] grid-rows-[60px_1fr] h-screen bg-dark-800">
+        <!-- Header -->
+        <header class="col-span-2 flex items-center justify-between px-5 bg-dark-900 text-white shadow-md z-10 border-b border-gray-700">
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-robot text-2xl text-primary"></i>
+                <h1 class="text-xl font-medium">Azure RAG Chat</h1>
+            </div>
+            <div class="flex items-center gap-3">
+                <input type="text" id="user-id" placeholder="Your User ID" value="user_1" 
+                       class="px-3 py-2 border border-gray-600 rounded text-sm w-36 text-white bg-dark-700 focus:outline-none focus:border-primary">
+                <button id="new-chat-btn" 
+                        class="bg-dark-700 text-white px-3 py-2 rounded text-sm font-medium flex items-center gap-1.5 hover:bg-dark-600 transition-colors border border-gray-600">
+                    <i class="fa-solid fa-plus"></i> New Chat
+                </button>
+            </div>
+        </header>
+        
+        <!-- Sidebar -->
+        <aside class="col-start-1 row-start-2 bg-dark-900 border-r border-gray-700 overflow-y-auto">
+            <div class="p-4 border-b border-gray-700">
+                <h3 class="text-sm font-medium text-gray-400">Conversations</h3>
+            </div>
+            <div id="conversations-list" class="py-2">
+                <!-- Conversations will be loaded here -->
+                <div class="p-5 text-center text-gray-500">
+                    <p>No conversations yet</p>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- Main Chat Area -->
+        <main class="col-start-2 row-start-2 flex flex-col h-full overflow-hidden">
+            <div id="messages-container" class="flex-1 p-5 flex flex-col gap-0 overflow-y-auto">
+                <div class="text-center mx-auto my-12 max-w-lg p-8 bg-dark-700 rounded-lg border border-gray-700">
+                    <h2 class="text-xl text-primary font-medium mb-3">Welcome to Azure RAG Chat</h2>
+                    <p class="text-gray-300">Ask me anything about Margie's Travel</p>
+                </div>
+                <!-- Messages will be displayed here -->
+            </div>
+            
+            <div class="p-4 bg-dark-800 border-t border-gray-700 flex items-center">
+                <textarea id="user-input" placeholder="Type your message here..." rows="1"
+                          class="flex-1 px-4 py-3 border border-gray-600 rounded-lg resize-none text-base focus:outline-none focus:border-primary transition-colors max-h-36 bg-dark-700 text-white"></textarea>
+                <button id="send-btn" disabled 
+                        class="w-10 h-10 ml-3 bg-primary text-white rounded-lg flex items-center justify-center disabled:bg-gray-600 disabled:cursor-not-allowed hover:bg-secondary transition-colors">
+                    <i class="fa-solid fa-paper-plane"></i>
+                </button>
+            </div>
+        </main>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // DOM Elements
+            const userIdInput = document.getElementById('user-id');
+            const newChatBtn = document.getElementById('new-chat-btn');
+            const conversationsList = document.getElementById('conversations-list');
+            const messagesContainer = document.getElementById('messages-container');
+            const userInput = document.getElementById('user-input');
+            const sendBtn = document.getElementById('send-btn');
+            
+            // App State
+            let currentState = {
+                userId: userIdInput.value,
+                conversationId: null,
+                conversations: [],
+                isLoading: false
+            };
+            
+            // Event listeners
+            userIdInput.addEventListener('input', (e) => {
+                currentState.userId = e.target.value.trim();
+                updateSendButtonState();
+                loadConversations();
+            });
+            
+            newChatBtn.addEventListener('click', () => {
+                setActiveConversation(null);
+                clearMessages();
+                showWelcomeMessage();
+            });
+            
+            userInput.addEventListener('input', () => {
+                updateSendButtonState();
+                
+                // Auto-resize the textarea
+                userInput.style.height = 'auto';
+                userInput.style.height = Math.min(userInput.scrollHeight, 150) + 'px';
+            });
+            
+            userInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey && !currentState.isLoading && userInput.value.trim()) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+            
+            sendBtn.addEventListener('click', () => {
+                if (!currentState.isLoading && userInput.value.trim()) {
+                    sendMessage();
+                }
+            });
+            
+            // Functions
+            function updateSendButtonState() {
+                sendBtn.disabled = userInput.value.trim() === '' || currentState.userId === '' || currentState.isLoading;
+            }
+            
+            function loadConversations() {
+                if (!currentState.userId) {
+                    showEmptyConversations();
+                    return;
+                }
+                
+                // Clear the existing conversations list
+                clearConversationsList();
+                
+                fetch(`/api/conversations?user_id=${encodeURIComponent(currentState.userId)}`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Failed to load conversations');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        currentState.conversations = data.conversations || [];
+                        
+                        if (currentState.conversations.length === 0) {
+                            showEmptyConversations();
+                        } else {
+                            renderConversations();
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error loading conversations:', error);
+                        showEmptyConversations();
+                    });
+            }
+            
+            function clearConversationsList() {
+                conversationsList.innerHTML = '';
+            }
+            
+            function showEmptyConversations() {
+                conversationsList.innerHTML = `
+                    <div class="p-5 text-center text-gray-500">
+                        <p>No conversations yet</p>
+                    </div>
+                `;
+            }
+            
+            function renderConversations() {
+                clearConversationsList();
+                
+                // Sort by most recent message timestamp
+                const sortedConversations = [...currentState.conversations].sort((a, b) => {
+                    const aDate = a.messages && a.messages.length > 0 ? 
+                        new Date(a.messages[a.messages.length - 1].timestamp) : new Date(0);
+                    const bDate = b.messages && b.messages.length > 0 ? 
+                        new Date(b.messages[b.messages.length - 1].timestamp) : new Date(0);
+                    return bDate - aDate; // Descending order (newest first)
+                });
+                
+                sortedConversations.forEach(conversation => {
+                    const firstUserMessage = conversation.messages.find(msg => msg.role === 'user');
+                    const displayText = firstUserMessage ? firstUserMessage.content : 'New conversation';
+                    
+                    // Get the timestamp of the last message
+                    const lastMessage = conversation.messages[conversation.messages.length - 1];
+                    const timestamp = lastMessage ? new Date(lastMessage.timestamp) : null;
+                    
+                    const isActive = conversation.id === currentState.conversationId;
+                    
+                    const conversationItem = document.createElement('div');
+                    conversationItem.className = `py-3 px-5 cursor-pointer transition-colors hover:bg-dark-800 border-l-4 ${isActive ? 'border-primary bg-dark-800' : 'border-transparent'} overflow-hidden text-ellipsis whitespace-nowrap`;
+                    conversationItem.dataset.id = conversation.id;
+                    
+                    // Truncate the message if it's too long
+                    const truncatedText = displayText.length > 35 ? 
+                        displayText.substring(0, 35) + '...' : displayText;
+                        
+                    conversationItem.innerHTML = `
+                        ${truncatedText}
+                        ${timestamp ? `<div class="text-xs text-gray-500 mt-1">${formatTime(timestamp)}</div>` : ''}
+                    `;
+                    
+                    conversationItem.addEventListener('click', () => {
+                        setActiveConversation(conversation.id);
+                        loadConversationMessages(conversation);
+                    });
+                    
+                    conversationsList.appendChild(conversationItem);
+                });
+            }
+            
+            function setActiveConversation(conversationId) {
+                currentState.conversationId = conversationId;
+                
+                // Update the active class in the sidebar
+                const items = conversationsList.querySelectorAll('[data-id]');
+                items.forEach(item => {
+                    if (item.dataset.id === conversationId) {
+                        item.classList.add('border-primary', 'bg-dark-800');
+                        item.classList.remove('border-transparent');
+                    } else {
+                        item.classList.remove('border-primary', 'bg-dark-800');
+                        item.classList.add('border-transparent');
+                    }
+                });
+            }
+            
+            function loadConversationMessages(conversation) {
+                clearMessages();
+                
+                if (!conversation || !conversation.messages || conversation.messages.length === 0) {
+                    return;
+                }
+                
+                conversation.messages.forEach(message => {
+                    addMessage(message.role, message.content, new Date(message.timestamp));
+                });
+                
+                // Scroll to the bottom
+                scrollToBottom();
+            }
+            
+            function clearMessages() {
+                messagesContainer.innerHTML = '';
+            }
+            
+            function showWelcomeMessage() {
+                messagesContainer.innerHTML = `
+                    <div class="text-center mx-auto my-12 max-w-lg p-8 bg-dark-700 rounded-lg border border-gray-700">
+                        <h2 class="text-xl text-primary font-medium mb-3">Welcome to Azure RAG Chat</h2>
+                        <p class="text-gray-300">Ask me anything about Margie's Travel</p>
+                    </div>
+                `;
+            }
+            
+            function sendMessage() {
+                const message = userInput.value.trim();
+                if (!message || !currentState.userId) return;
+                
+                const timestamp = new Date();
+                
+                // Add user message to UI
+                addMessage('user', message, timestamp);
+                
+                // Clear input and reset height
+                userInput.value = '';
+                userInput.style.height = 'auto';
+                
+                // Show loading indicator
+                showLoadingIndicator();
+                
+                // Set loading state
+                currentState.isLoading = true;
+                updateSendButtonState();
+                
+                // Scroll to bottom
+                scrollToBottom();
+                
+                // Prepare request payload
+                const payload = {
+                    user_id: currentState.userId,
+                    prompt: message
+                };
+                
+                // Add conversation ID if continuing a conversation
+                if (currentState.conversationId) {
+                    payload.conversation_id = currentState.conversationId;
+                }
+                
+                // Send request to API
+                fetch('/api/openai', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to send message');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Remove loading indicator
+                    hideLoadingIndicator();
+                    
+                    // Update the conversation ID
+                    currentState.conversationId = data.conversation_id;
+                    
+                    // Add assistant message to UI
+                    addMessage('assistant', data.response, new Date());
+                    
+                    // Reload conversations to update the sidebar
+                    loadConversations();
+                    
+                    // Scroll to bottom
+                    scrollToBottom();
+                })
+                .catch(error => {
+                    console.error('Error sending message:', error);
+                    
+                    // Remove loading indicator
+                    hideLoadingIndicator();
+                    
+                    // Show error message
+                    addMessage('assistant', 'Sorry, there was an error processing your request. Please try again.', new Date());
+                    
+                    // Scroll to bottom
+                    scrollToBottom();
+                })
+                .finally(() => {
+                    // Reset loading state
+                    currentState.isLoading = false;
+                    updateSendButtonState();
+                });
+            }
+            
+            function addMessage(role, content, timestamp) {
+                // Create message container
+                const messageContainer = document.createElement('div');
+                messageContainer.className = role === 'user' ? 'bg-dark-700' : 'bg-dark-800';
+                messageContainer.classList.add('py-6', 'px-4', 'md:px-10', 'w-full', 'border-b', 'border-gray-700');
+                
+                // Create inner content
+                const innerContent = document.createElement('div');
+                innerContent.className = 'max-w-3xl mx-auto flex items-start gap-4';
+                
+                // Create avatar
+                const avatar = document.createElement('div');
+                if (role === 'user') {
+                    avatar.className = 'w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center text-white flex-shrink-0';
+                    avatar.innerHTML = '<i class="fa-solid fa-user"></i>';
+                } else {
+                    avatar.className = 'w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white flex-shrink-0';
+                    avatar.innerHTML = '<i class="fa-solid fa-robot"></i>';
+                }
+                
+                // Create message content
+                const messageContent = document.createElement('div');
+                messageContent.className = 'flex-1';
+                
+                // Format message and add it to content
+                messageContent.innerHTML = `
+                    <div class="prose prose-invert max-w-none">
+                        ${formatMessageContent(content)}
+                    </div>
+                    <div class="text-xs text-gray-500 mt-2">${formatTime(timestamp)}</div>
+                `;
+                
+                // Assemble message
+                innerContent.appendChild(avatar);
+                innerContent.appendChild(messageContent);
+                messageContainer.appendChild(innerContent);
+                messagesContainer.appendChild(messageContainer);
+            }
+            
+            function formatMessageContent(content) {
+                // Convert URLs to links
+                const urlRegex = /(https?:\/\/[^\s]+)/g;
+                content = content.replace(urlRegex, url => `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:underline">${url}</a>`);
+                
+                // Convert markdown-style **bold** to HTML bold
+                content = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                
+                // Convert markdown-style *italic* to HTML italic
+                content = content.replace(/\*(.*?)\*/g, '<em>$1</em>');
+                
+                // Convert linebreaks to <br>
+                content = content.replace(/\n/g, '<br>');
+                
+                return content;
+            }
+            
+            function showLoadingIndicator() {
+                // Create message container for loading indicator
+                const messageContainer = document.createElement('div');
+                messageContainer.className = 'bg-dark-800 py-6 px-4 md:px-10 w-full border-b border-gray-700';
+                messageContainer.id = 'loading-indicator';
+                
+                // Create inner content
+                const innerContent = document.createElement('div');
+                innerContent.className = 'max-w-3xl mx-auto flex items-start gap-4';
+                
+                // Create avatar
+                const avatar = document.createElement('div');
+                avatar.className = 'w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white flex-shrink-0';
+                avatar.innerHTML = '<i class="fa-solid fa-robot"></i>';
+                
+                // Create loading animation
+                const loadingContent = document.createElement('div');
+                loadingContent.className = 'flex-1';
+                loadingContent.innerHTML = `
+                    <div class="flex gap-2 items-center">
+                        <div class="typing-dot w-2 h-2 bg-gray-400 rounded-full"></div>
+                        <div class="typing-dot w-2 h-2 bg-gray-400 rounded-full"></div>
+                        <div class="typing-dot w-2 h-2 bg-gray-400 rounded-full"></div>
+                    </div>
+                `;
+                
+                // Assemble loading indicator
+                innerContent.appendChild(avatar);
+                innerContent.appendChild(loadingContent);
+                messageContainer.appendChild(innerContent);
+                messagesContainer.appendChild(messageContainer);
+            }
+            
+            function hideLoadingIndicator() {
+                const loadingElement = document.getElementById('loading-indicator');
+                if (loadingElement) {
+                    loadingElement.remove();
+                }
+            }
+            
+            function scrollToBottom() {
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }
+            
+            function formatTime(date) {
+                if (!date) return '';
+                
+                const now = new Date();
+                const yesterday = new Date(now);
+                yesterday.setDate(now.getDate() - 1);
+                
+                const isToday = date.toDateString() === now.toDateString();
+                const isYesterday = date.toDateString() === yesterday.toDateString();
+                
+                const options = { hour: 'numeric', minute: 'numeric' };
+                
+                if (isToday) {
+                    return `Today, ${date.toLocaleTimeString(undefined, options)}`;
+                } else if (isYesterday) {
+                    return `Yesterday, ${date.toLocaleTimeString(undefined, options)}`;
+                } else {
+                    return date.toLocaleDateString(undefined, {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: 'numeric',
+                        minute: 'numeric'
+                    });
+                }
+            }
+            
+            // Initialize
+            updateSendButtonState();
+            loadConversations();
+            showWelcomeMessage();
+            
+            // Add resize observer to handle window resizing
+            window.addEventListener('resize', () => {
+                if (messagesContainer.scrollHeight > messagesContainer.clientHeight) {
+                    scrollToBottom();
+                }
+            });
+        });
+    </script>
+</body>
+</html> 

@@ -138,8 +138,6 @@ async def get_conversations(user_id: str):
     
     try:
         print(f"Fetching conversations for user: {user_id}")
-        
-        # Ensure user_id is a string
         user_id_str = str(user_id).strip()
         
         # Get conversations with error handling for Unicode issues
@@ -148,9 +146,7 @@ async def get_conversations(user_id: str):
             print(f"Retrieved {len(conversations)} conversations from CosmosDB")
             return {"conversations": conversations}
         except UnicodeEncodeError as ue:
-            # Specific handling for encoding errors
             print(f"Unicode encoding error: {str(ue)}")
-            # Try to return conversations anyway without printing their contents
             return {"conversations": conversations if 'conversations' in locals() else []}
             
     except Exception as e:
