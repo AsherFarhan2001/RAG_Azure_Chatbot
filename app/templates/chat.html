@@ -83,6 +83,7 @@
                 <select id="user-id" 
                        class="px-3 py-2 border border-gray-600 rounded text-sm w-48 text-white bg-dark-700 focus:outline-none focus:border-primary">
                     <option value="">Select User ID</option>
+                    <option value="new-user" class="text-primary font-medium">➕ Create New User</option>
                     <!-- User IDs will be loaded here -->
                 </select>
                 <button id="new-chat-btn" 
@@ -126,6 +127,30 @@
         </main>
     </div>
     
+    <!-- New User Modal -->
+    <div id="new-user-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center hidden">
+        <div class="bg-dark-800 rounded-lg p-6 w-96 shadow-xl border border-gray-700">
+            <h3 class="text-lg font-medium text-white mb-4">Create New User</h3>
+            <div class="mb-4">
+                <label for="new-user-id" class="block text-sm font-medium text-gray-400 mb-2">User ID</label>
+                <input type="text" id="new-user-id" 
+                       class="w-full px-3 py-2 border border-gray-600 rounded text-sm text-white bg-dark-700 focus:outline-none focus:border-primary"
+                       placeholder="Enter a unique user ID">
+                <p class="text-xs text-gray-500 mt-1">Use lowercase letters, numbers, and underscores only.</p>
+            </div>
+            <div class="flex justify-end gap-3">
+                <button id="cancel-new-user" 
+                        class="px-4 py-2 border border-gray-600 rounded text-sm font-medium bg-dark-700 text-white hover:bg-dark-600 transition-colors">
+                    Cancel
+                </button>
+                <button id="create-new-user" 
+                        class="px-4 py-2 rounded text-sm font-medium bg-primary text-white hover:bg-secondary transition-colors">
+                    Create
+                </button>
+            </div>
+        </div>
+    </div>
+    
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             // DOM Elements
@@ -135,6 +160,12 @@
             const messagesContainer = document.getElementById('messages-container');
             const userInput = document.getElementById('user-input');
             const sendBtn = document.getElementById('send-btn');
+            
+            // New User Modal Elements
+            const newUserModal = document.getElementById('new-user-modal');
+            const newUserIdInput = document.getElementById('new-user-id');
+            const cancelNewUserBtn = document.getElementById('cancel-new-user');
+            const createNewUserBtn = document.getElementById('create-new-user');
             
             // App State
             let currentState = {
@@ -156,9 +187,17 @@
                     .then(data => {
                         const userIds = data.user_ids || [];
                         
+                        // Save the "Create New User" option
+                        const newUserOption = userIdInput.querySelector('option[value="new-user"]');
+                        
                         // Clear existing options except the first placeholder
                         while (userIdInput.options.length > 1) {
                             userIdInput.remove(1);
+                        }
+                        
+                        // Re-add the "Create New User" option
+                        if (newUserOption) {
+                            userIdInput.add(newUserOption);
                         }
                         
                         // Add user IDs to dropdown
@@ -184,6 +223,13 @@
             // Event listeners
             userIdInput.addEventListener('input', (e) => {
                 currentState.userId = e.target.value.trim();
+                
+                // Check if "Create New User" option is selected
+                if (currentState.userId === 'new-user') {
+                    showNewUserModal();
+                    return;
+                }
+                
                 updateSendButtonState();
                 loadConversations();
             });
@@ -212,6 +258,17 @@
             sendBtn.addEventListener('click', () => {
                 if (!currentState.isLoading && userInput.value.trim()) {
                     sendMessage();
+                }
+            });
+            
+            // Modal event listeners
+            cancelNewUserBtn.addEventListener('click', hideNewUserModal);
+            
+            createNewUserBtn.addEventListener('click', createNewUser);
+            
+            newUserIdInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    createNewUser();
                 }
             });
             
@@ -558,6 +615,88 @@
                         minute: 'numeric'
                     });
                 }
+            }
+            
+            // New user modal functions
+            function showNewUserModal() {
+                newUserModal.classList.remove('hidden');
+                setTimeout(() => {
+                    newUserIdInput.focus();
+                }, 100);
+            }
+            
+            function hideNewUserModal() {
+                newUserModal.classList.add('hidden');
+                newUserIdInput.value = '';
+                
+                // Reset the select to previously selected user or first option
+                if (currentState.userId === 'new-user') {
+                    // Try to select the first actual user ID
+                    const userOptions = Array.from(userIdInput.options).filter(option => 
+                        option.value !== '' && option.value !== 'new-user'
+                    );
+                    
+                    if (userOptions.length > 0) {
+                        userIdInput.value = userOptions[0].value;
+                        currentState.userId = userOptions[0].value;
+                    } else {
+                        userIdInput.value = '';
+                        currentState.userId = '';
+                    }
+                    
+                    updateSendButtonState();
+                    loadConversations();
+                }
+            }
+            
+            function createNewUser() {
+                const newUserId = newUserIdInput.value.trim();
+                
+                // Validate new user ID
+                if (!newUserId) {
+                    alert('Please enter a user ID');
+                    return;
+                }
+                
+                // Simple validation for user ID format
+                const validFormat = /^[a-z0-9_]+$/;
+                if (!validFormat.test(newUserId)) {
+                    alert('User ID can only contain lowercase letters, numbers, and underscores');
+                    return;
+                }
+                
+                // Check if user ID already exists
+                const existingOption = Array.from(userIdInput.options).find(option => 
+                    option.value === newUserId
+                );
+                
+                if (existingOption) {
+                    alert('This user ID already exists');
+                    return;
+                }
+                
+                // Create new option and add it to the select
+                const newOption = document.createElement('option');
+                newOption.value = newUserId;
+                newOption.textContent = newUserId;
+                
+                // Add after the "Create New User" option
+                userIdInput.add(newOption, 2);
+                
+                // Select the new user
+                userIdInput.value = newUserId;
+                currentState.userId = newUserId;
+                
+                // Hide modal
+                hideNewUserModal();
+                
+                // Start new conversation
+                setActiveConversation(null);
+                clearMessages();
+                showWelcomeMessage();
+                
+                // Update button state
+                updateSendButtonState();
             }
             
             // Initialize
