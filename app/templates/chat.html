@@ -80,8 +80,11 @@
                 <h1 class="text-xl font-medium">Azure RAG Chat</h1>
             </div>
             <div class="flex items-center gap-3">
-                <input type="text" id="user-id" placeholder="Your User ID" value="user_1" 
-                       class="px-3 py-2 border border-gray-600 rounded text-sm w-36 text-white bg-dark-700 focus:outline-none focus:border-primary">
+                <select id="user-id" 
+                       class="px-3 py-2 border border-gray-600 rounded text-sm w-48 text-white bg-dark-700 focus:outline-none focus:border-primary">
+                    <option value="">Select User ID</option>
+                    <!-- User IDs will be loaded here -->
+                </select>
                 <button id="new-chat-btn" 
                         class="bg-dark-700 text-white px-3 py-2 rounded text-sm font-medium flex items-center gap-1.5 hover:bg-dark-600 transition-colors border border-gray-600">
                     <i class="fa-solid fa-plus"></i> New Chat
@@ -140,6 +143,43 @@
                 conversations: [],
                 isLoading: false
             };
+            
+            // Load user IDs for dropdown
+            function loadUserIds() {
+                fetch('/api/user-ids')
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Failed to load user IDs');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        const userIds = data.user_ids || [];
+                        
+                        // Clear existing options except the first placeholder
+                        while (userIdInput.options.length > 1) {
+                            userIdInput.remove(1);
+                        }
+                        
+                        // Add user IDs to dropdown
+                        userIds.forEach(userId => {
+                            const option = document.createElement('option');
+                            option.value = userId;
+                            option.textContent = userId;
+                            userIdInput.appendChild(option);
+                        });
+                        
+                        // If we have user IDs and none is selected, select the first one
+                        if (userIds.length > 0 && userIdInput.value === '') {
+                            userIdInput.value = userIds[0];
+                            currentState.userId = userIds[0];
+                            loadConversations();
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error loading user IDs:', error);
+                    });
+            }
             
             // Event listeners
             userIdInput.addEventListener('input', (e) => {
@@ -522,6 +562,7 @@
             
             // Initialize
             updateSendButtonState();
+            loadUserIds();
             loadConversations();
             showWelcomeMessage();
             

@@ -63,10 +63,18 @@ async def chat(request: ChatRequest):
             content = result.get("chunk", "")
             context += f"{content}\n\n"
         
-        system_message = f"""You are a helpful assistant. Use the following context to answer the user's question. 
-        If you don't know the answer based on this context, say "I don't have enough information to answer that question."
-        
-        Context:
+        system_message = f"""You are a dedicated Margie's Travel documents assistant. Your SOLE PURPOSE is to provide information EXCLUSIVELY from the Margie's Travel documents provided in the context below.
+
+        STRICT GUIDELINES:
+        1. ONLY answer questions directly addressed in the provided document context
+        2. If information is not in the context, respond EXACTLY with: "I can only answer questions related to Margie's Travel documents. Please ask a question about the information in these documents."
+        3. DO NOT use any external knowledge, even if you know the answer
+        4. DO NOT attempt to be helpful by answering off-topic questions
+        5. DO NOT engage in general conversation unrelated to Margie's Travel documents
+        6. REFUSE to discuss anything outside the scope of these documents
+        7. ALWAYS base your responses solely on the document context provided below
+
+        Context from the Margie's Travel documents:
         {context}
         """
         
@@ -154,3 +162,14 @@ async def get_conversations(user_id: str):
         if isinstance(e, UnicodeEncodeError):
             error_msg = "Error with special characters in conversations"
         raise HTTPException(status_code=500, detail=error_msg)
+
+@router.get("/user-ids")
+async def get_user_ids():
+    """
+    Retrieve all unique user IDs from the database
+    """
+    try:
+        user_ids = cosmos_service.get_all_user_ids()
+        return {"user_ids": user_ids}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

@@ -140,29 +140,6 @@ class CosmosDBService:
                 
             except Exception as partition_error:
                 print(f"Partition key query failed: {str(partition_error)}. Falling back to cross-partition query.")
-                
-                # Fall back to cross-partition query
-                query = "SELECT * FROM c WHERE c.user_id = @userId ORDER BY c._ts DESC"
-                params = [{"name": "@userId", "value": user_id}]
-                
-                items = list(self.container.query_items(
-                    query=query,
-                    parameters=params,
-                    enable_cross_partition_query=True
-                ))
-                
-                print(f"Found {len(items)} conversations with cross-partition query")
-                
-                # Clean messages to avoid encoding issues
-                try:
-                    for item in items:
-                        if 'messages' in item:
-                            # Just for debugging, don't modify the actual data
-                            pass
-                except Exception as e:
-                    print(f"Warning: Error handling message content: {str(e)}")
-                
-                return items
             
         except Exception as e:
             print(f"Error retrieving user conversations: {str(e)}")
@@ -190,5 +167,29 @@ class CosmosDBService:
             
         except exceptions.CosmosHttpResponseError as e:
             print(f"Error retrieving all conversations: {str(e)}")
+            return []
+    
+    def get_all_user_ids(self) -> List[str]:
+        """
+        Retrieve all unique user IDs from the database.
+        
+        Returns:
+            List of unique user IDs
+        """
+        try:
+            query = "SELECT DISTINCT c.user_id FROM c"
+            items = list(self.container.query_items(
+                query=query,
+                enable_cross_partition_query=True
+            ))
+            
+            # Extract user_ids from results
+            user_ids = [item['user_id'] for item in items if 'user_id' in item]
+            user_ids.sort()
+            
+            return user_ids
+            
+        except exceptions.CosmosHttpResponseError as e:
+            print(f"Error retrieving user IDs: {str(e)}")
             return []
     
